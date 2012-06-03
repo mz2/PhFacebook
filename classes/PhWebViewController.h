@@ -14,11 +14,11 @@
 
 @interface PhWebViewController : NSObject <NSWindowDelegate>
 {
-    IBOutlet NSWindow *window;
-    IBOutlet WebView *webView;
-    IBOutlet NSButton *cancelButton;
+    __unsafe_unretained IBOutlet NSWindow *window;
+    __unsafe_unretained IBOutlet WebView *webView;
+    __unsafe_unretained IBOutlet NSButton *cancelButton;
 
-    PhFacebook *parent;
+    __unsafe_unretained PhFacebook *parent;
     NSString *permissions;
 }
 

@@ -25,7 +25,7 @@
     if ((self = [super init]))
     {
         if (appID)
-            _appID = [[NSString stringWithString: appID] retain];
+            _appID = [NSString stringWithString: appID];
         _delegate = delegate; // Don't retain delegate to avoid retain cycles
         _webViewController = nil;
         _authToken = nil;
@@ -34,14 +34,6 @@
     }
 
     return self;
-}
-
-- (void) dealloc
-{
-    [_appID release];
-    [_webViewController release];
-    [_authToken release];
-    [super dealloc];
 }
 
 - (void) notifyDelegateForToken: (PhAuthenticationToken*) token withError: (NSString*) errorReason
@@ -74,7 +66,6 @@
 
 - (void) clearToken
 {
-    [_authToken release];
     _authToken = nil;
 }
 
@@ -177,82 +168,81 @@
 
 - (NSString*) accessToken
 {
-    return [[_authToken.authenticationToken copy] autorelease];
+    return [_authToken.authenticationToken copy];
 }
 
 - (void) sendFacebookRequest: (NSDictionary*) allParams
 {
-    NSAutoreleasePool *pool = [NSAutoreleasePool new];
-
-    if (_authToken)
+    @autoreleasepool
     {
-        NSString *request = [allParams objectForKey: @"request"];
-        NSString *str;
-        BOOL postRequest = [[allParams objectForKey: @"postRequest"] boolValue];
-                
-        if (postRequest)
+        if (_authToken)
         {
-            str = [NSString stringWithFormat: kFBGraphApiPostURL, request];
-        }
-        else
-        {
-            // Check if request already has optional parameters
-            NSString *formatStr = kFBGraphApiGetURL;
-            NSRange rng = [request rangeOfString:@"?"];
-            if (rng.length > 0)
-                formatStr = kFBGraphApiGetURLWithParams;
-            str = [NSString stringWithFormat: formatStr, request, _authToken.authenticationToken];
-        }
-
-        
-        NSDictionary *params = [allParams objectForKey: @"params"];
-        NSMutableString *strPostParams = nil;
-        if (params != nil) 
-        {
+            NSString *request = [allParams objectForKey: @"request"];
+            NSString *str;
+            BOOL postRequest = [[allParams objectForKey: @"postRequest"] boolValue];
+            
             if (postRequest)
             {
-                strPostParams = [NSMutableString stringWithFormat: @"access_token=%@", _authToken.authenticationToken];
-                for (NSString *p in [params allKeys]) 
-                    [strPostParams appendFormat: @"&%@=%@", p, [params objectForKey: p]];
+                str = [NSString stringWithFormat: kFBGraphApiPostURL, request];
             }
             else
             {
-                NSMutableString *strWithParams = [NSMutableString stringWithString: str];
-                for (NSString *p in [params allKeys]) 
-                    [strWithParams appendFormat: @"&%@=%@", p, [params objectForKey: p]];
-                str = strWithParams;
+                // Check if request already has optional parameters
+                NSString *formatStr = kFBGraphApiGetURL;
+                NSRange rng = [request rangeOfString:@"?"];
+                if (rng.length > 0)
+                    formatStr = kFBGraphApiGetURLWithParams;
+                str = [NSString stringWithFormat: formatStr, request, _authToken.authenticationToken];
+            }
+            
+            
+            NSDictionary *params = [allParams objectForKey: @"params"];
+            NSMutableString *strPostParams = nil;
+            if (params != nil) 
+            {
+                if (postRequest)
+                {
+                    strPostParams = [NSMutableString stringWithFormat: @"access_token=%@", _authToken.authenticationToken];
+                    for (NSString *p in [params allKeys]) 
+                        [strPostParams appendFormat: @"&%@=%@", p, [params objectForKey: p]];
+                }
+                else
+                {
+                    NSMutableString *strWithParams = [NSMutableString stringWithString: str];
+                    for (NSString *p in [params allKeys]) 
+                        [strWithParams appendFormat: @"&%@=%@", p, [params objectForKey: p]];
+                    str = strWithParams;
+                }
+            }
+            
+            NSMutableURLRequest *req = [NSMutableURLRequest requestWithURL: [NSURL URLWithString: str]];
+            
+            if (postRequest)
+            {
+                NSData *requestData = [NSData dataWithBytes: [strPostParams UTF8String] length: [strPostParams length]];
+                [req setHTTPMethod: @"POST"];
+                [req setHTTPBody: requestData];
+                [req setValue: @"application/x-www-form-urlencoded" forHTTPHeaderField: @"content-type"];
+            }
+            
+            NSURLResponse *response = nil;
+            NSError *error = nil;
+            NSData *data = [NSURLConnection sendSynchronousRequest: req returningResponse: &response error: &error];
+            
+            if ([_delegate respondsToSelector: @selector(requestResult:)])
+            {
+                NSString *str = [[NSString alloc] initWithBytesNoCopy: (void*)[data bytes] length: [data length] encoding:NSASCIIStringEncoding freeWhenDone: NO];
+                
+                NSDictionary *result = [NSDictionary dictionaryWithObjectsAndKeys:
+                                        str, @"result",
+                                        request, @"request",
+                                        data, @"raw",                                    
+                                        self, @"sender",
+                                        nil];
+                [_delegate performSelectorOnMainThread:@selector(requestResult:) withObject: result waitUntilDone:YES];
             }
         }
-        
-        NSMutableURLRequest *req = [NSMutableURLRequest requestWithURL: [NSURL URLWithString: str]];
-        
-        if (postRequest)
-        {
-            NSData *requestData = [NSData dataWithBytes: [strPostParams UTF8String] length: [strPostParams length]];
-            [req setHTTPMethod: @"POST"];
-            [req setHTTPBody: requestData];
-            [req setValue: @"application/x-www-form-urlencoded" forHTTPHeaderField: @"content-type"];
-        }
-        
-        NSURLResponse *response = nil;
-        NSError *error = nil;
-        NSData *data = [NSURLConnection sendSynchronousRequest: req returningResponse: &response error: &error];
-
-        if ([_delegate respondsToSelector: @selector(requestResult:)])
-        {
-            NSString *str = [[NSString alloc] initWithBytesNoCopy: (void*)[data bytes] length: [data length] encoding:NSASCIIStringEncoding freeWhenDone: NO];
-
-            NSDictionary *result = [NSDictionary dictionaryWithObjectsAndKeys:
-                str, @"result",
-                request, @"request",
-                data, @"raw",                                    
-                self, @"sender",
-                nil];
-            [_delegate performSelectorOnMainThread:@selector(requestResult:) withObject: result waitUntilDone:YES];
-            [str release];
-        }
     }
-    [pool drain];
 }
 
 - (void) sendRequest: (NSString*) request params: (NSDictionary*) params usePostRequest: (BOOL) postRequest
@@ -273,33 +263,32 @@
 
 - (void) sendFacebookFQLRequest: (NSString*) query
 {
-    NSAutoreleasePool *pool = [NSAutoreleasePool new];
-
-    if (_authToken)
+    @autoreleasepool
     {
-        NSString *str = [NSString stringWithFormat: kFBGraphApiFqlURL, [query stringByAddingPercentEscapesUsingEncoding:NSUTF8StringEncoding], _authToken.authenticationToken];
-
-        NSMutableURLRequest *req = [NSMutableURLRequest requestWithURL: [NSURL URLWithString: str]];
-
-        NSURLResponse *response = nil;
-        NSError *error = nil;
-        NSData *data = [NSURLConnection sendSynchronousRequest: req returningResponse: &response error: &error];
-
-        if ([_delegate respondsToSelector: @selector(requestResult:)])
+        if (_authToken)
         {
-            NSString *str = [[NSString alloc] initWithBytesNoCopy: (void*)[data bytes] length: [data length] encoding:NSASCIIStringEncoding freeWhenDone: NO];
-
-            NSDictionary *result = [NSDictionary dictionaryWithObjectsAndKeys:
-                                    str, @"result",
-                                    query, @"request",
-                                    data, @"raw",
-                                    self, @"sender",
-                                    nil];
-            [_delegate performSelectorOnMainThread:@selector(requestResult:) withObject: result waitUntilDone:YES];
-            [str release];
+            NSString *str = [NSString stringWithFormat: kFBGraphApiFqlURL, [query stringByAddingPercentEscapesUsingEncoding:NSUTF8StringEncoding], _authToken.authenticationToken];
+            
+            NSMutableURLRequest *req = [NSMutableURLRequest requestWithURL: [NSURL URLWithString: str]];
+            
+            NSURLResponse *response = nil;
+            NSError *error = nil;
+            NSData *data = [NSURLConnection sendSynchronousRequest: req returningResponse: &response error: &error];
+            
+            if ([_delegate respondsToSelector: @selector(requestResult:)])
+            {
+                NSString *str = [[NSString alloc] initWithBytesNoCopy: (void*)[data bytes] length: [data length] encoding:NSASCIIStringEncoding freeWhenDone: NO];
+                
+                NSDictionary *result = [NSDictionary dictionaryWithObjectsAndKeys:
+                                        str, @"result",
+                                        query, @"request",
+                                        data, @"raw",
+                                        self, @"sender",
+                                        nil];
+                [_delegate performSelectorOnMainThread:@selector(requestResult:) withObject: result waitUntilDone:YES];
+            }
         }
     }
-    [pool drain];
 }
 
 - (void) sendFQLRequest: (NSString*) query
